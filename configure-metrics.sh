@@ -48,4 +48,4 @@ configureMetrics() {
 }
 configureMetrics
 
-metricsWriteDatapoint="$(dirname "${BASH_SOURCE[0]}")"/metrics-write-datapoint.sh
+metricsWriteDatapoint=/home/sol/solana-bigtable/metrics-write-datapoint.sh

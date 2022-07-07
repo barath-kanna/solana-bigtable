@@ -1,18 +1,18 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-PATH_TO_LEDGER_DIR=$1
-PATH_TO_LEDGER_SNAPSHOT_DIR=$2
-PATH_TO_IDENTITY_KEYPAIR=$3
-PATH_TO_LOGS=$4
+PATH_TO_LEDGER_DIR="/mnt/ledger"
+PATH_TO_LEDGER_SNAPSHOT_DIR="/mnt/ledger/snapshots"
+PATH_TO_IDENTITY_KEYPAIR="/home/sol/validator-keypair.json"
+PATH_TO_LOGS="/home/sol/log/validator.log"
 
 ledger_dir=$PATH_TO_LEDGER_DIR
 ledger_snapshots_dir=$PATH_TO_LEDGER_SNAPSHOT_DIR
 
-# |touch ~/warehouse-exit-signal| will trigger a clean shutdown
-exit_signal_file=~/warehouse-exit-signal
+# |touch /home/sol/solana-bigtable/warehouse-exit-signal| will trigger a clean shutdown
+exit_signal_file=/home/sol/solana-bigtable/warehouse-exit-signal
 
-# |touch ~/warehouse-no-archive| to prevent the node from archiving even when it's time
-no_archive_signal_file=~/warehouse-no-archive
+# |touch /home/sol/solana-bigtable/warehouse-no-archive| to prevent the node from archiving even when it's time
+no_archive_signal_file=/home/sol/solana-bigtable/warehouse-no-archive
 
 set -x
 set -e
@@ -26,13 +26,13 @@ panic() {
 }
 
 #shellcheck source=/dev/null
-source ~/service-env.sh
+source /home/sol/solana-bigtable/service-env.sh
 
 #shellcheck source=/dev/null
-source ~/service-env-warehouse-*.sh
+source /home/sol/solana-bigtable/service-env-warehouse.sh
 
 # Delete any zero-length snapshots that can cause validator startup to fail
-find "$ledger_snapshots_dir" -name 'snapshot-*' -size 0 -print -exec rm {} \; || true
+find "$ledger_snapshots_dir" -name 'snapshot-*' -size 0 -print -exec /bin/rm {} \; || true
 
 #shellcheck source=./configure-metrics.sh
 source "$here"/configure-metrics.sh
@@ -47,10 +47,10 @@ if [[ -z $EXPECTED_GENESIS_HASH ]]; then
   exit 1
 fi
 
-if [[ -z $EXPECTED_SHRED_VERSION ]]; then
-  echo EXPECTED_SHRED_VERSION environment variable not defined
-  exit 1
-fi
+# if [[ -z $EXPECTED_SHRED_VERSION ]]; then
+#   echo EXPECTED_SHRED_VERSION environment variable not defined
+#   exit 1
+# fi
 
 if [[ -z $STORAGE_BUCKET ]]; then
   echo STORAGE_BUCKET environment variable not defined
@@ -102,7 +102,7 @@ datapoint() {
 
 
 args=(
-  --dynamic-port-range 8002-8012
+  --dynamic-port-range 8002-8024
   --entrypoint "$ENTRYPOINT"
   --expected-genesis-hash "$EXPECTED_GENESIS_HASH"
   --gossip-port 8001
@@ -116,10 +116,12 @@ args=(
   --enable-rpc-transaction-history
   --no-port-check
   --no-untrusted-rpc
-  --init-complete-file ~/.init-complete
+  --init-complete-file /home/sol/.init-complete
   --wal-recovery-mode skip_any_corrupted_record
   --snapshots "$ledger_snapshots_dir"
-  --limit-ledger-size 400000000
+  --limit-ledger-size 50000000
+  
+  
 )
 
 if ! [[ $(solana --version) =~ \ 1\.4\.[0-9]+ ]]; then
@@ -141,13 +143,13 @@ for tv in "${TRUSTED_VALIDATOR_PUBKEYS[@]}"; do
   [[ $tv = "$identity_pubkey" ]] || args+=(--trusted-validator "$tv")
 done
 
-if [[ -d "$ledger_dir" ]]; then
-  args+=(--no-genesis-fetch)
-fi
+# if [[ -d "$ledger_dir" ]]; then
+#  args+=(--no-genesis-fetch)
+# fi
 
-if [[ -d "$ledger_snapshots_dir" ]]; then
-  args+=(--no-snapshot-fetch)
-fi
+# if [[ -d "$ledger_snapshots_dir" ]]; then
+#   args+=(--no-snapshot-fetch)
+# fi
 
 if [[ -w /mnt/accounts/ ]]; then
   args+=(--accounts /mnt/accounts)
@@ -200,10 +202,12 @@ trap 'kill_node_and_exit' INT TERM ERR
 get_latest_snapshot() {
   declare dir="$1"
   if [[ ! -d "$dir" ]]; then
-    panic "get_latest_snapshot: not a directory: $dir"
+    /bin/mkdir -p "$dir"
+    
+    #panic "get_latest_snapshot: not a directory: $dir"
   fi
 
-  find "$dir" -name snapshot-\*.tar\* | sort -ns | tail -n1
+  /bin/find "$dir" -name snapshot-\*.tar\* | /bin/sort -ns | /bin/tail -n1
 }
 
 get_snapshot_slot() {
@@ -222,18 +226,18 @@ minutes_since_last_ledger_archive=invalid
 prepare_archive_location() {
   # If a current archive directory does not exist, create it and save the latest
   # snapshot in it (if not at genesis)
-  if [[ ! -d ~/ledger-archive ]]; then
-    mkdir -p ~/ledger-archive
+  if [[ ! -d /mnt/ledger/ledger-archive ]]; then
+    /bin/mkdir -p /mnt/ledger/ledger-archive
     declare archive_snapshot
     archive_snapshot=$(get_latest_snapshot "$ledger_snapshots_dir")
     if [[ -n "$archive_snapshot" ]]; then
-      ln "$archive_snapshot" ~/ledger-archive/
+      /bin/ln "$archive_snapshot" /mnt/ledger/ledger-archive
     fi
   fi
 
   # Determine the current archive slot
   declare archive_snapshot
-  archive_snapshot=$(get_latest_snapshot ~/ledger-archive)
+  archive_snapshot=$(get_latest_snapshot /mnt/ledger/ledger-archive)
   if [[ -n "$archive_snapshot" ]]; then
     archive_snapshot_slot=$(get_snapshot_slot "$archive_snapshot")
   else
@@ -246,7 +250,7 @@ prepare_archive_location() {
 prepare_archive_location
 
 while true; do
-  rm -f ~/.init-complete
+  /bin/rm -f /home/sol/.init-complete
 
   solana-validator "${args[@]}" &
   pid=$!
@@ -263,19 +267,19 @@ while true; do
 
       # cool down for a minute before restarting to avoid a tight restart loop
       # if there's a failure very early in the validator boot
-      sleep 60
+      /bin/sleep 60
 
       break  # validator exited unexpectedly, restart it
     fi
 
     if ! $initialized; then
-      if [[ ! -f ~/.init-complete ]]; then
+      if [[ ! -f /home/sol/.init-complete ]]; then
         echo "waiting for node to initialize..."
         if [[ $SECONDS -gt 600 ]]; then
           datapoint_error validator-not-initialized
           SECONDS=
         fi
-        sleep 10
+        /bin/sleep 10
         continue
       fi
       echo Validator has initialized
@@ -284,13 +288,13 @@ while true; do
     fi
 
     if ! $caught_up; then
-      if ! timeout 15m solana catchup --url "$RPC_URL" "$identity_pubkey" http://127.0.0.1:8899; then
+      if ! /bin/timeout 15m solana catchup --url "$RPC_URL" "$identity_pubkey" http://127.0.0.1:8899; then
         echo "catchup failed..."
         if [[ $SECONDS -gt 600 ]]; then
           datapoint_error validator-not-caught-up
           SECONDS=
         fi
-        sleep 60
+        /bin/sleep 60
         continue
       fi
       echo Validator has caught up
@@ -298,16 +302,16 @@ while true; do
       caught_up=true
     fi
 
-    last_archive_epoch=$(cat ~/ledger-archive/epoch || true)
+    last_archive_epoch=$(/bin/cat /mnt/ledger/ledger-archive/epoch || true)
     if [[ -z "$last_archive_epoch" ]]; then
-      if ! solana --url "$RPC_URL" epoch > ~/ledger-archive/epoch; then
+      if ! solana --url "$RPC_URL" epoch > /mnt/ledger/ledger-archive/epoch; then
         datapoint_error failed-to-set-epoch
-        sleep 10
+        /bin/sleep 10
       fi
       continue
     fi
 
-    sleep 60
+    /bin/sleep 60
 
     current_epoch=""
     for _ in $(seq 1 10); do
@@ -315,7 +319,7 @@ while true; do
       if [[ -n "$current_epoch" ]]; then
         break
       fi
-      sleep 2
+      /bin/sleep 2
     done
 
     if [[ -z "$current_epoch" ]]; then
@@ -326,10 +330,9 @@ while true; do
     if [[ -f $exit_signal_file ]]; then
       echo "$exit_signal_file present, forcing ledger archive for epoch $current_epoch"
     else
-      if ((minutes_since_last_ledger_archive < MINIMUM_MINUTES_BETWEEN_ARCHIVE)) ||
+      if ((minutes_since_last_ledger_archive < $MINIMUM_MINUTES_BETWEEN_ARCHIVE)) ||
           [[ $current_epoch == "$last_archive_epoch" ]] || [[ -f $no_archive_signal_file ]]; then
         ((++minutes_since_last_ledger_archive))
-
         # Every hour while waiting for the next epoch, emit a metric and verify/archive a snapshot
         if ((minutes_since_last_ledger_archive % 60 == 0)); then
           echo "Current epoch: $current_epoch"
@@ -348,16 +351,16 @@ while true; do
               datapoint_error snapshot-stuck "slot=$latest_snapshot_slot"
             else
               # Archive the hourly snapshot
-              mkdir -p ~/ledger-archive/hourly
-              ln -f "$latest_snapshot" ~/ledger-archive/hourly/
+              /bin/mkdir -p /mnt/ledger/ledger-archive/hourly
+              /bin/ln -f "$latest_snapshot" /mnt/ledger/ledger-archive/hourly/
 
               # Sanity check: ensure the snapshot verifies
               echo "Verifying snapshot for $latest_snapshot_slot: $latest_snapshot"
-              rm -rf ~/snapshot-check
-              mkdir ~/snapshot-check
-              ln -s "$ledger_dir"/genesis.bin ~/snapshot-check/
-              ln "$latest_snapshot" ~/snapshot-check/
-              if solana-ledger-tool --ledger ~/snapshot-check verify; then
+              /bin/rm -rf /mnt/ledger/snapshot-check
+              /bin/mkdir /mnt/ledger/snapshot-check
+              /bin/ln -s "$ledger_dir"/genesis.bin /mnt/ledger/snapshot-check/
+              /bin/ln "$latest_snapshot" /mnt/ledger/snapshot-check/
+              if solana-ledger-tool --ledger /mnt/ledger/snapshot-check verify; then
                 datapoint snapshot-verification-ok "slot=$latest_snapshot_slot"
                 last_known_good_snapshot_slot=$latest_snapshot_slot
               else
@@ -395,28 +398,29 @@ while true; do
     SECONDS=
     (
       set -x
-      solana-ledger-tool --ledger "$ledger_dir" bounds | tee ~/ledger-archive/bounds.txt
-      solana-ledger-tool --version | tee ~/ledger-archive/version.txt
+      solana-ledger-tool --ledger "$ledger_dir" bounds | tee /mnt/ledger/ledger-archive/bounds.txt
+      solana-ledger-tool --version | tee /mnt/ledger/ledger-archive/version.txt
     )
-    ledger_bounds="$(cat ~/ledger-archive/bounds.txt)"
+    ledger_bounds="$(cat /mnt/ledger/ledger-archive/bounds.txt)"
     datapoint ledger-archived "label=\"$archive_snapshot_slot\",duration_secs=$SECONDS,bounds=\"$ledger_bounds\""
 
-    mv "$ledger_dir"/rocksdb ~/ledger-archive/
+    /bin/mv "$ledger_dir"/rocksdb /mnt/ledger/ledger-archive/
 
-    mkdir -p ~/"$STORAGE_BUCKET".inbox
-    mv ~/ledger-archive ~/"$STORAGE_BUCKET".inbox/"$archive_snapshot_slot"
+    /bin/mkdir -p /mnt/ledger/"$STORAGE_BUCKET".inbox
+    /bin/mv /mnt/ledger/ledger-archive /mnt/ledger/"$STORAGE_BUCKET".inbox/"$archive_snapshot_slot"
 
     # Clean out the ledger directory from all artifacts other than genesis and
     # the snapshot archives, so the warehouse node restarts cleanly from its
     # last snapshot
-    rm -rf "$ledger_dir"/accounts "$ledger_snapshots_dir"/snapshot
+    /bin/rm -rf /mnt/accounts *  
+    /bin/rm -rf "$ledger_snapshots_dir"/snapshot
 
     # Remove the tower state to avoid a panic on validator restart due to the manual
     # manipulation of the ledger directory
-    rm -f "$ledger_dir"/tower*.bin
+    /bin/rm -f "$ledger_dir"/tower*.bin
 
     # Prepare for next archive
-    rm -rf ~/ledger-archive
+    /bin/rm -rf /mnt/ledger/ledger-archive
     prepare_archive_location
 
     if [[ -f $exit_signal_file ]]; then

@@ -8,7 +8,7 @@ Type=simple
 Restart=always
 RestartSec=1
 User=sol
-ExecStart=<path_to_warehouse-upload-to-storage-bucket.sh>
+ExecStart=/home/sol/solana-bigtable/warehouse-upload-to-storage-bucket.sh
 
 [Install]
 WantedBy=multi-user.target

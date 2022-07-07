@@ -1,4 +1,4 @@
 # Availability zone used to referece other files
-ZONE=<availability_zone>
+ZONE="asia-south2-c"
 # Cloud Storage bucket name to store your hourly snapshots
-STORAGE_BUCKET=<cloud_storage_bucket_name>
+STORAGE_BUCKET="solana-ledger-bucket"

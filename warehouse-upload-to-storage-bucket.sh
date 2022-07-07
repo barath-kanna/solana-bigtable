@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
-PATH_TO_IDENTITY_KEYPAIR=$1
+PATH_TO_IDENTITY_KEYPAIR="/home/sol/validator-keypair.json"
 
 set -x
 set -e
@@ -14,10 +14,10 @@ panic() {
 }
 
 #shellcheck source=/dev/null
-source ~/service-env.sh
+source /home/sol/solana-bigtable/service-env.sh
 
 #shellcheck source=/dev/null
-source ~/service-env-warehouse-*.sh
+source /home/sol/solana-bigtable/service-env-warehouse.sh
 
 #shellcheck source=./configure-metrics.sh
 source "$here"/configure-metrics.sh
@@ -56,13 +56,13 @@ datapoint() {
 
 while true; do
   # Look for new ledger fragments from `warehouse.sh`
-  for new_ledger in ~/"$STORAGE_BUCKET".inbox/*; do
-    mkdir -p ~/"$STORAGE_BUCKET"
-    mv $new_ledger ~/"$STORAGE_BUCKET"
+  for new_ledger in /mnt/ledger/"$STORAGE_BUCKET".inbox/*; do
+    mkdir -p /mnt/ledger/"$STORAGE_BUCKET"
+    mv $new_ledger /mnt/ledger/"$STORAGE_BUCKET"
   done
 
   # Check for rocksdb/ directories and compress them
-  for rocksdb in ~/"$STORAGE_BUCKET"/*/rocksdb; do
+  for rocksdb in /mnt/ledger/"$STORAGE_BUCKET"/*/rocksdb; do
     SECONDS=
     (
       cd "$(dirname "$rocksdb")"
@@ -72,29 +72,30 @@ while true; do
         if [[ ! -f "$archive_dir"/.bigtable ]]; then
           echo "Uploading $archive_dir to BigTable"
           SECONDS=
-          while ! timeout 48h solana-ledger-tool --ledger "$archive_dir" bigtable upload --allow-missing-metadata; do
+          # --allow-missing-metadata
+          while ! /bin/timeout 1m solana-ledger-tool --ledger "$archive_dir" bigtable upload; do
             echo "bigtable upload failed..."
             datapoint_error bigtable-upload-failure
-            sleep 30
+            /bin/sleep 30
           done
-          touch "$archive_dir"/.bigtable
+          /bin/touch "$archive_dir"/.bigtable
           echo Ledger upload to bigtable took $SECONDS seconds
           datapoint bigtable-upload-complete "duration_secs=$SECONDS"
         fi
       fi
 
       echo "Creating rocksdb.tar.bz2 in $archive_dir"
-      rm -rf rocksdb.tar.bz2
-      tar jcf rocksdb.tar.bz2 rocksdb
-      rm -rf rocksdb
+      /bin/rm -rf rocksdb.tar.bz2
+      /bin/tar -cvjSf rocksdb.tar.bz2 rocksdb
+      /bin/rm -rf rocksdb
       echo "$archive_dir/rocksdb.tar.bz2 created in $SECONDS seconds"
     )
     datapoint created-rocksdb-tar-bz2 "duration_secs=$SECONDS"
   done
 
-  if [[ ! -d ~/"$STORAGE_BUCKET" ]]; then
-    echo "Nothing to upload, ~/$STORAGE_BUCKET does not exist"
-    sleep 60m
+  if [[ ! -d /mnt/ledger/"$STORAGE_BUCKET" ]]; then
+    echo "Nothing to upload, /mnt/ledger/$STORAGE_BUCKET does not exist"
+    /bin/sleep 60m
     continue
   fi
 
@@ -104,14 +105,14 @@ while true; do
   (
 #  	export GOOGLE_APPLICATION_CREDENTIALS=
 	set -x
-	  while ! timeout 8h gsutil -m rsync -r ~/"$STORAGE_BUCKET" gs://"$STORAGE_BUCKET"/; do
+	  while ! /bin/timeout 8h gsutil -m rsync -r /mnt/ledger/"$STORAGE_BUCKET" gs://"$STORAGE_BUCKET"/; do
 		  exit 1
 	    echo "gsutil rsync failed..."
 	    datapoint_error gsutil-rsync-failure
-	    sleep 30
+	    /bin/sleep 30
 	  done
   )
   echo Ledger upload to storage bucket took $SECONDS seconds
   datapoint ledger-upload-complete "duration_secs=$SECONDS"
-  rm -rf ~/"$STORAGE_BUCKET"
+  /bin/rm -rf /mnt/ledger/"$STORAGE_BUCKET"
 done
