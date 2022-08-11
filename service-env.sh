@@ -9,7 +9,7 @@ TRUSTED_VALIDATOR_PUBKEYS=(7Np41oeYqPefeNQEHSv1UDhYrehxin3NStELsSKCT4K2 GdnSyH3Y
 export SOLANA_METRICS_CONFIG=host=https://metrics.solana.com:8086,db=mainnet-beta,u=mainnet-beta_write,p=password
 #Replace the below with a full path that includes both Solana's binary and generic system binaries
 #Do not enter PATH=$PATH if you're planning to run the script as systemctl
-PATH="/home/sol/.local/share/solana/install/active_release/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+PATH="/root/.local/share/solana/install/active_release/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 #MINIMUM_MINUTES_BETWEEN_ARCHIVE=1iiiiiiiiiiiiiiiiiiiiiiiiiiii
 RPC_URL=https://api.mainnet-beta.solana.com
 ENTRYPOINT_HOST=mainnet-beta.solana.com
@@ -23,5 +23,5 @@ ENTRYPOINTS=(
 )
 export RUST_BACKTRACE=1
 export LimitNOFILE=1000000
-export GOOGLE_APPLICATION_CREDENTIALS="/home/sol/zeeveops-55b1c31155ae.json"
+export GOOGLE_APPLICATION_CREDENTIALS="/home/sol/zeeveops.json"
 ENABLE_CPI_AND_LOG_STORAGE=1
