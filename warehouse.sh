@@ -324,113 +324,113 @@ while true; do
       sleep 2
     done
 
-    if [[ -z "$current_epoch" ]]; then
-      datapoint_error failed-to-get-epoch
-      continue
-    fi
-      # [[ $current_epoch == "$last_archive_epoch" ]] ||
-    if [[ -f $exit_signal_file ]]; then
-      echo "$exit_signal_file present, forcing ledger archive for epoch $current_epoch"
-    else
-      if ((minutes_since_last_ledger_archive < $MINIMUM_MINUTES_BETWEEN_ARCHIVE)) || 
-        [[ $current_epoch == "$last_archive_epoch" ]] || [[ -f $no_archive_signal_file ]]; then
-        ((++minutes_since_last_ledger_archive))
-        # Every hour while waiting for the next epoch, emit a metric and verify/archive a snapshot
-        if ((minutes_since_last_ledger_archive % 60 == 0)); then
-          echo "Current epoch: $current_epoch"
-          if [[ -f $no_archive_signal_file ]]; then
-            echo "Archiving disabled due to $no_archive_signal_file"
-          fi
+#     if [[ -z "$current_epoch" ]]; then
+#       datapoint_error failed-to-get-epoch
+#       continue
+#     fi
+#       # [[ $current_epoch == "$last_archive_epoch" ]] ||
+#     if [[ -f $exit_signal_file ]]; then
+#       echo "$exit_signal_file present, forcing ledger archive for epoch $current_epoch"
+#     else
+#       if ((minutes_since_last_ledger_archive < $MINIMUM_MINUTES_BETWEEN_ARCHIVE)) || 
+#         [[ $current_epoch == "$last_archive_epoch" ]] || [[ -f $no_archive_signal_file ]]; then
+#         ((++minutes_since_last_ledger_archive))
+#         # Every hour while waiting for the next epoch, emit a metric and verify/archive a snapshot
+#         if ((minutes_since_last_ledger_archive % 60 == 0)); then
+#           echo "Current epoch: $current_epoch"
+#           if [[ -f $no_archive_signal_file ]]; then
+#             echo "Archiving disabled due to $no_archive_signal_file"
+#           fi
 
-          datapoint waiting-to-archive "minutes_since=$minutes_since_last_ledger_archive"
+#           datapoint waiting-to-archive "minutes_since=$minutes_since_last_ledger_archive"
 
-          latest_snapshot=$(get_latest_snapshot "$ledger_snapshots_dir")
-          if [[ -n $latest_snapshot ]]; then
-            latest_snapshot_slot=$(get_snapshot_slot "$latest_snapshot")
+#           latest_snapshot=$(get_latest_snapshot "$ledger_snapshots_dir")
+#           if [[ -n $latest_snapshot ]]; then
+#             latest_snapshot_slot=$(get_snapshot_slot "$latest_snapshot")
 
-            if [[ $latest_snapshot_slot = "$last_known_good_snapshot_slot" ]]; then
-              # Problem!  No new snapshot in the last hour
-              datapoint_error snapshot-stuck "slot=$latest_snapshot_slot"
-            else
-              # Archive the hourly snapshot
-              mkdir -p /home/sol/ledger/ledger-archive/hourly
-              ln -f "$latest_snapshot" /home/sol/ledger/ledger-archive/hourly/
+#             if [[ $latest_snapshot_slot = "$last_known_good_snapshot_slot" ]]; then
+#               # Problem!  No new snapshot in the last hour
+#               datapoint_error snapshot-stuck "slot=$latest_snapshot_slot"
+#             else
+#               # Archive the hourly snapshot
+#               mkdir -p /home/sol/ledger/ledger-archive/hourly
+#               ln -f "$latest_snapshot" /home/sol/ledger/ledger-archive/hourly/
 
-              # Sanity check: ensure the snapshot verifies
-              echo "Verifying snapshot for $latest_snapshot_slot: $latest_snapshot"
-              rm -rf /home/sol/ledger/snapshot-check
-              mkdir /home/sol/ledger/snapshot-check
-              ln -s "$ledger_dir"/genesis.bin /home/sol/ledger/snapshot-check/
-              ln "$latest_snapshot" /home/sol/ledger/snapshot-check/
-              if solana-ledger-tool --ledger /home/sol/ledger/snapshot-check verify; then
-                datapoint snapshot-verification-ok "slot=$latest_snapshot_slot"
-                last_known_good_snapshot_slot=$latest_snapshot_slot
-              else
-                datapoint_error snapshot-verification-failed "slot=$latest_snapshot_slot"
-              fi
-            fi
-          fi
-        fi
-        continue
-      else
-        echo "Time to archive.  Current epoch:$current_epoch, last archive epoch: $last_archive_epoch"
-      fi
-    fi
+#               # Sanity check: ensure the snapshot verifies
+#               echo "Verifying snapshot for $latest_snapshot_slot: $latest_snapshot"
+#               rm -rf /home/sol/ledger/snapshot-check
+#               mkdir /home/sol/ledger/snapshot-check
+#               ln -s "$ledger_dir"/genesis.bin /home/sol/ledger/snapshot-check/
+#               ln "$latest_snapshot" /home/sol/ledger/snapshot-check/
+#               if solana-ledger-tool --ledger /home/sol/ledger/snapshot-check verify; then
+#                 datapoint snapshot-verification-ok "slot=$latest_snapshot_slot"
+#                 last_known_good_snapshot_slot=$latest_snapshot_slot
+#               else
+#                 datapoint_error snapshot-verification-failed "slot=$latest_snapshot_slot"
+#               fi
+#             fi
+#           fi
+#         fi
+#         continue
+#       else
+#         echo "Time to archive.  Current epoch:$current_epoch, last archive epoch: $last_archive_epoch"
+#       fi
+#     fi
 
-    latest_snapshot=$(get_latest_snapshot "$ledger_snapshots_dir")
-    if [[ -z $latest_snapshot ]]; then
-      echo "Validator has not produced a snapshot yet"
-      datapoint_error snapshot-missing
-      continue
-    fi
-    latest_snapshot_slot=$(get_snapshot_slot "$latest_snapshot")
-    echo "Latest snapshot: slot $latest_snapshot_slot: $latest_snapshot"
+#     latest_snapshot=$(get_latest_snapshot "$ledger_snapshots_dir")
+#     if [[ -z $latest_snapshot ]]; then
+#       echo "Validator has not produced a snapshot yet"
+#       datapoint_error snapshot-missing
+#       continue
+#     fi
+#     latest_snapshot_slot=$(get_snapshot_slot "$latest_snapshot")
+#     echo "Latest snapshot: slot $latest_snapshot_slot: $latest_snapshot"
 
-    if [[ "$archive_snapshot_slot" = "$latest_snapshot_slot" ]]; then
-      echo "Validator has not produced a new snapshot yet"
-      datapoint_error stale-snapshot
-      continue
-    fi
+#     if [[ "$archive_snapshot_slot" = "$latest_snapshot_slot" ]]; then
+#       echo "Validator has not produced a new snapshot yet"
+#       datapoint_error stale-snapshot
+#       continue
+#     fi
 
-    echo Killing the node
-    datapoint validator-terminated
-    kill_node
+#     echo Killing the node
+#     datapoint validator-terminated
+#     kill_node
 
-    echo "Archiving snapshot from $archive_snapshot_slot and subsequent ledger"
-    SECONDS=
-    (
-      set -x
-      solana-ledger-tool --ledger "$ledger_dir" bounds | tee /home/sol/ledger/ledger-archive/bounds.txt
-      solana-ledger-tool --version | tee /home/sol/ledger/ledger-archive/version.txt
-    )
-    ledger_bounds="$(cat /home/sol/ledger/ledger-archive/bounds.txt)"
-    datapoint ledger-archived "label=\"$archive_snapshot_slot\",duration_secs=$SECONDS,bounds=\"$ledger_bounds\""
+#     echo "Archiving snapshot from $archive_snapshot_slot and subsequent ledger"
+#     SECONDS=
+#     (
+#       set -x
+#       solana-ledger-tool --ledger "$ledger_dir" bounds | tee /home/sol/ledger/ledger-archive/bounds.txt
+#       solana-ledger-tool --version | tee /home/sol/ledger/ledger-archive/version.txt
+#     )
+#     ledger_bounds="$(cat /home/sol/ledger/ledger-archive/bounds.txt)"
+#     datapoint ledger-archived "label=\"$archive_snapshot_slot\",duration_secs=$SECONDS,bounds=\"$ledger_bounds\""
 
-    mv "$ledger_dir"/rocksdb /home/sol/ledger/ledger-archive/
+#     mv "$ledger_dir"/rocksdb /home/sol/ledger/ledger-archive/
 
-    mkdir -p /home/sol/ledger/"$STORAGE_BUCKET".inbox
-    mv /home/sol/ledger/ledger-archive /home/sol/ledger/"$STORAGE_BUCKET".inbox/"$archive_snapshot_slot"
+#     mkdir -p /home/sol/ledger/"$STORAGE_BUCKET".inbox
+#     mv /home/sol/ledger/ledger-archive /home/sol/ledger/"$STORAGE_BUCKET".inbox/"$archive_snapshot_slot"
 
-    # Clean out the ledger directory from all artifacts other than genesis and
-    # the snapshot archives, so the warehouse node restarts cleanly from its
-    # last snapshot
+#     # Clean out the ledger directory from all artifacts other than genesis and
+#     # the snapshot archives, so the warehouse node restarts cleanly from its
+#     # last snapshot
     
     
-    rm -rf "$ledger_dir"/accounts "$ledger_snapshots_dir"/snapshot
+#     rm -rf "$ledger_dir"/accounts "$ledger_snapshots_dir"/snapshot
 
-    # Remove the tower state to avoid a panic on validator restart due to the manual
-    # manipulation of the ledger directory
-    rm -f "$ledger_dir"/tower*.bin
+#     # Remove the tower state to avoid a panic on validator restart due to the manual
+#     # manipulation of the ledger directory
+#     rm -f "$ledger_dir"/tower*.bin
 
-    # Prepare for next archive
+#     # Prepare for next archive
     
-    rm -rf /home/sol/ledger/ledger-archive
-    prepare_archive_location
+#     rm -rf /home/sol/ledger/ledger-archive
+#     prepare_archive_location
 
-    if [[ -f $exit_signal_file ]]; then
-      echo $exit_signal_file present, exiting
-      exit 0
-    fi
+#     if [[ -f $exit_signal_file ]]; then
+#       echo $exit_signal_file present, exiting
+#       exit 0
+#     fi
 
     break
   done
